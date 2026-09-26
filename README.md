@@ -101,9 +101,8 @@ systemctl --user restart plasma-plasmashell.service   # Plasma lädt Widget-Code
 ## Testen ohne Claude Code
 
 ```bash
-# Fake-Daten in den State schreiben
-echo '{"model":{"display_name":"Opus"},"rate_limits":{"five_hour":{"used_percentage":73,"resets_at":'$(( $(date +%s) + 7200 ))'},"seven_day":{"used_percentage":21,"resets_at":'$(( $(date +%s) + 400000 ))'}}}' \
-  | ~/.local/bin/claude-usage-hook
+# Fake-Daten in den State schreiben (bash -c, damit es auch unter fish läuft)
+bash -c 'now=$(date +%s); echo "{\"model\":{\"display_name\":\"Opus\"},\"rate_limits\":{\"five_hour\":{\"used_percentage\":73,\"resets_at\":$((now+7200))},\"seven_day\":{\"used_percentage\":21,\"resets_at\":$((now+400000))}}}" | ~/.local/bin/claude-usage-hook'
 
 ~/.local/bin/claude-usage-hook --show        # Stand im Terminal
 
