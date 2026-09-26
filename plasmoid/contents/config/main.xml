@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<kcfg xmlns="http://www.kde.org/standards/kcfg/1.0"
+      xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+      xsi:schemaLocation="http://www.kde.org/standards/kcfg/1.0 http://www.kde.org/standards/kcfg/1.0/kcfg.xsd">
+    <kcfgfile name=""/>
+    <group name="General">
+        <entry name="refreshSeconds" type="Int">
+            <label>Intervall in Sekunden, in dem die State-Datei gelesen wird (lokal, kein Netzwerk)</label>
+            <default>10</default>
+        </entry>
+        <entry name="warnPercent" type="Int">
+            <default>70</default>
+        </entry>
+        <entry name="critPercent" type="Int">
+            <default>90</default>
+        </entry>
+        <entry name="staleMinutes" type="Int">
+            <label>Ab wie vielen Minuten ohne Update aus Claude Code die Werte als veraltet gelten</label>
+            <default>30</default>
+        </entry>
+        <entry name="showWeekly" type="Bool">
+            <default>true</default>
+        </entry>
+    </group>
+</kcfg>

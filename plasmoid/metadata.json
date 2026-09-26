@@ -1,0 +1,18 @@
+{
+    "KPlugin": {
+        "Authors": [
+            {
+                "Name": "Benny"
+            }
+        ],
+        "Category": "System Information",
+        "Description": "Zeigt das Claude-Nutzungslimit (5 h / 7 Tage) aus Claude Code in der Kontrollleiste",
+        "Icon": "utilities-system-monitor",
+        "Id": "local.claudeusage",
+        "License": "MIT",
+        "Name": "Claude Usage",
+        "Version": "0.1.0"
+    },
+    "KPackageStructure": "Plasma/Applet",
+    "X-Plasma-API-Minimum-Version": "6.0"
+}

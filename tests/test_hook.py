@@ -1,0 +1,132 @@
+"""Tests fuer hook/claude-usage-hook.py - laufen mit: python3 -m unittest discover tests"""
+import json
+import os
+import subprocess
+import sys
+import tempfile
+import time
+import unittest
+from pathlib import Path
+
+HOOK = Path(__file__).resolve().parent.parent / "hook" / "claude-usage-hook.py"
+
+
+class HookTest(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.state = Path(self.tmp.name) / "sub" / "state.json"
+        self.env = dict(os.environ, CLAUDE_USAGE_STATE=str(self.state))
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def run_hook(self, payload, *args):
+        data = payload if isinstance(payload, (bytes, str)) else json.dumps(payload)
+        if isinstance(data, str):
+            data = data.encode()
+        return subprocess.run(
+            [sys.executable, str(HOOK), *args],
+            input=data, capture_output=True, env=self.env, timeout=10,
+        )
+
+    def read_state(self):
+        return json.loads(self.state.read_text())
+
+    def payload(self, five=23.5, seven=41.2, offset=3600):
+        now = int(time.time())
+        return {
+            "model": {"display_name": "Opus"},
+            "version": "2.1.260",
+            "rate_limits": {
+                "five_hour": {"used_percentage": five, "resets_at": now + offset},
+                "seven_day": {"used_percentage": seven, "resets_at": now + 5 * 86400},
+            },
+        }
+
+    def test_writes_state_and_prints_line(self):
+        res = self.run_hook(self.payload())
+        self.assertEqual(res.returncode, 0, res.stderr)
+        self.assertIn("[Opus] 5h 24% | 7d 41%", res.stdout.decode())
+        st = self.read_state()
+        self.assertEqual(st["windows"]["five_hour"]["used_percentage"], 23.5)
+        self.assertEqual(st["windows"]["seven_day"]["used_percentage"], 41.2)
+        self.assertEqual(st["claude_code_version"], "2.1.260")
+        self.assertEqual(oct(self.state.stat().st_mode & 0o777), "0o600")
+
+    def test_missing_rate_limits_keeps_old_state(self):
+        self.run_hook(self.payload())
+        before = self.read_state()
+        res = self.run_hook({"model": {"display_name": "Opus"}})
+        self.assertEqual(res.returncode, 0)
+        self.assertEqual(self.read_state(), before)
+        # Statusline zeigt trotzdem den letzten bekannten Stand
+        self.assertIn("5h 24%", res.stdout.decode())
+
+    def test_epoch_leak_bug_is_ignored(self):
+        p = self.payload()
+        p["rate_limits"]["five_hour"]["used_percentage"] = 1776950400
+        self.run_hook(p)
+        st = self.read_state()
+        self.assertNotIn("five_hour", st["windows"])
+        self.assertIn("seven_day", st["windows"])
+
+    def test_iso_resets_at_is_converted(self):
+        p = self.payload()
+        p["rate_limits"]["five_hour"]["resets_at"] = "2030-01-01T12:00:00Z"
+        self.run_hook(p)
+        self.assertEqual(self.read_state()["windows"]["five_hour"]["resets_at"], 1893499200)
+
+    def test_expired_window_not_shown_in_statusline(self):
+        res = self.run_hook(self.payload(offset=-60))
+        self.assertNotIn("5h", res.stdout.decode())
+        self.assertIn("7d 41%", res.stdout.decode())
+
+    def test_partial_update_merges(self):
+        self.run_hook(self.payload())
+        p = self.payload(five=50)
+        del p["rate_limits"]["seven_day"]
+        self.run_hook(p)
+        st = self.read_state()
+        self.assertEqual(st["windows"]["five_hour"]["used_percentage"], 50)
+        self.assertEqual(st["windows"]["seven_day"]["used_percentage"], 41.2)
+
+    def test_unchanged_data_is_throttled(self):
+        self.run_hook(self.payload())
+        first = self.read_state()["updated_at"]
+        mtime = self.state.stat().st_mtime_ns
+        self.run_hook(self.payload())
+        self.assertEqual(self.read_state()["updated_at"], first)
+        self.assertEqual(self.state.stat().st_mtime_ns, mtime)
+
+    def test_chain_passes_stdin_through(self):
+        payload = self.payload()
+        res = self.run_hook(payload, "--chain", "cat")
+        self.assertEqual(json.loads(res.stdout), payload)
+        self.assertTrue(self.state.exists())
+
+    def test_chain_returncode_is_forwarded(self):
+        res = self.run_hook(self.payload(), "--chain", "echo hi; exit 3")
+        self.assertEqual(res.returncode, 3)
+        self.assertEqual(res.stdout.decode().strip(), "hi")
+
+    def test_garbage_input_never_crashes(self):
+        for junk in (b"", b"not json", b"[1,2,3]", b"\xff\xfe", b'{"rate_limits": 5}'):
+            res = self.run_hook(junk)
+            self.assertEqual(res.returncode, 0, (junk, res.stderr))
+            self.assertTrue(res.stdout.strip())
+
+    def test_quiet_prints_nothing(self):
+        res = self.run_hook(self.payload(), "--quiet")
+        self.assertEqual(res.stdout, b"")
+        self.assertTrue(self.state.exists())
+
+    def test_show(self):
+        self.assertEqual(self.run_hook(b"", "--show").returncode, 1)
+        self.run_hook(self.payload())
+        res = self.run_hook(b"", "--show")
+        self.assertEqual(res.returncode, 0)
+        self.assertIn("five_hour", res.stdout.decode())
+
+
+if __name__ == "__main__":
+    unittest.main()
