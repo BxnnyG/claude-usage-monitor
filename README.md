@@ -27,6 +27,29 @@ offiziell das Feld `rate_limits.five_hour` / `rate_limits.seven_day` mit
 `used_percentage` und `resets_at`. Der Hook schreibt genau das in eine Datei, das
 Widget zeigt sie an.
 
+### Wann aktualisiert sich was?
+
+Zwei Stufen, die man nicht verwechseln sollte:
+
+1. **Claude Code → `state.json`, ereignisgesteuert.** Claude Code ruft den Hook nach jeder
+   Antwort auf, außerdem bei Moduswechsel, `/compact`, Ablauf des Prompt-Caches und wenn ein
+   Limit-Fenster zurückgesetzt wird. Neue *Werte* gibt es aber nur nach einer API-Antwort,
+   denn die Prozente stammen aus deren Response-Headern. Alle anderen Aufrufe liefern den
+   Stand der letzten Antwort *dieser* Session noch einmal. Der Hook merkt sich pro Session,
+   was sie zuletzt gemeldet hat, und wertet solche Wiederholungen nicht als neue Daten.
+   Sonst würde eine seit Stunden untätige Session den frischeren Stand einer aktiven mit
+   alten Werten überschreiben.
+2. **`state.json` → Widget, Polling.** Das Widget liest die Datei alle 10 s per `cat` und
+   zusätzlich beim Öffnen des Popups. Das ist nicht der Engpass: Ein `cat` alle 10 s kostet
+   praktisch nichts, und neue Werte entstehen ohnehin nur in Stufe 1.
+
+**Warum kein systemd-Timer oder -Service?** Ein Timer braucht etwas, das er abfragen kann.
+Claude Code bietet keinen dokumentierten Weg, den Nutzungsstand ohne echte Modellanfrage
+abzurufen: kein Subcommand, kein `-p`-fähiges `/usage` (Stand 09/2026). Die Wege, die es gibt,
+stehen in der Tabelle unten (OAuth-Token gegen `/api/oauth/usage`, Cookie-Scraping), und genau
+die vermeidet dieses Projekt bewusst. Auch `statusLine.refreshInterval` bringt nichts: Es ruft
+den Hook nur öfter mit denselben alten Werten auf.
+
 - **Kein Netzwerk.** Weder Hook noch Widget stellen eine einzige Verbindung her.
 - **Keine Credentials.** `~/.claude/.credentials.json`, OAuth-Tokens oder Browser-Cookies
   werden nicht angefasst.
@@ -146,9 +169,14 @@ Format von `~/.cache/claude-usage/state.json`:
   "windows": {
     "five_hour": {"used_percentage": 42.0, "resets_at": 1790010000, "seen_at": 1790000000},
     "seven_day": {"used_percentage": 15.0, "resets_at": 1790400000, "seen_at": 1790000000}
-  }
+  },
+  "sessions": {"<session_id>": {"api_ms": 81234.0, "windows": {"...": [42.0, 1790010000]}, "seen": 1790000000}}
 }
 ```
+
+`updated_at` und `seen_at` bedeuten „letzte *neue* Daten“, nicht „letzter Hook-Aufruf“.
+`sessions` ist intern (Erkennung von Wiederholungen, max. 32 Einträge, 8 Tage) und wird vom
+Widget ignoriert.
 
 ## Troubleshooting
 

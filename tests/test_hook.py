@@ -1,4 +1,5 @@
 """Tests fuer hook/claude-usage-hook.py - laufen mit: python3 -m unittest discover tests"""
+import importlib.util
 import json
 import os
 import subprocess
@@ -32,9 +33,12 @@ class HookTest(unittest.TestCase):
     def read_state(self):
         return json.loads(self.state.read_text())
 
-    def payload(self, five=23.5, seven=41.2, offset=3600):
+    def write_state(self, state):
+        self.state.write_text(json.dumps(state))
+
+    def payload(self, five=23.5, seven=41.2, offset=3600, session=None, api_ms=None):
         now = int(time.time())
-        return {
+        p = {
             "model": {"display_name": "Opus"},
             "version": "2.1.260",
             "rate_limits": {
@@ -42,6 +46,20 @@ class HookTest(unittest.TestCase):
                 "seven_day": {"used_percentage": seven, "resets_at": now + 5 * 86400},
             },
         }
+        if session is not None:
+            p["session_id"] = session
+        if api_ms is not None:
+            p["cost"] = {"total_api_duration_ms": api_ms}
+        return p
+
+    def age_state(self, seconds=3600):
+        """Tut so, als waere der gespeicherte Stand `seconds` alt."""
+        st = self.read_state()
+        st["updated_at"] -= seconds
+        for win in st["windows"].values():
+            win["seen_at"] -= seconds
+        self.write_state(st)
+        return st
 
     def test_writes_state_and_prints_line(self):
         res = self.run_hook(self.payload())
@@ -119,6 +137,73 @@ class HookTest(unittest.TestCase):
         res = self.run_hook(self.payload(), "--quiet")
         self.assertEqual(res.stdout, b"")
         self.assertTrue(self.state.exists())
+
+    # --- mehrere Sessions / reine Wiederholungen -------------------------
+
+    def test_idle_session_does_not_overwrite_fresher_value(self):
+        self.run_hook(self.payload(five=40, session="A", api_ms=1000))
+        # Session B war laenger untaetig und rendert mit ihrem alten Stand neu
+        self.run_hook(self.payload(five=20, session="B", api_ms=500))
+        self.assertEqual(self.read_state()["windows"]["five_hour"]["used_percentage"], 40)
+
+    def test_repeat_without_api_response_keeps_timestamps(self):
+        p = self.payload(session="A", api_ms=1000)
+        self.run_hook(p)
+        before = self.age_state()
+        res = self.run_hook(p)  # z. B. Prompt-Cache abgelaufen, Moduswechsel
+        self.assertEqual(self.read_state(), before)
+        self.assertIn("5h 24%", res.stdout.decode())
+
+    def test_new_api_response_refreshes_timestamps(self):
+        self.run_hook(self.payload(session="A", api_ms=1000))
+        before = self.age_state()
+        self.run_hook(self.payload(session="A", api_ms=1800))  # gleiche Werte
+        st = self.read_state()
+        self.assertGreater(st["updated_at"], before["updated_at"])
+        self.assertGreater(
+            st["windows"]["five_hour"]["seen_at"], before["windows"]["five_hour"]["seen_at"]
+        )
+
+    def test_known_session_may_report_lower_value(self):
+        self.run_hook(self.payload(five=40, session="A", api_ms=1000))
+        self.run_hook(self.payload(five=30, session="A", api_ms=2000))
+        self.assertEqual(self.read_state()["windows"]["five_hour"]["used_percentage"], 30)
+
+    def test_new_window_replaces_old_even_if_lower(self):
+        self.run_hook(self.payload(five=40, session="A", api_ms=1000))
+        self.run_hook(self.payload(five=5, offset=3600 + 5 * 3600, session="B", api_ms=10))
+        self.assertEqual(self.read_state()["windows"]["five_hour"]["used_percentage"], 5)
+
+    def test_older_window_is_ignored(self):
+        self.run_hook(self.payload(five=10, offset=5 * 3600, session="A", api_ms=1000))
+        self.run_hook(self.payload(five=90, offset=600, session="B", api_ms=10))
+        self.assertEqual(self.read_state()["windows"]["five_hour"]["used_percentage"], 10)
+
+    def test_dropped_window_rerender_is_not_fresh_data(self):
+        p = self.payload(session="A", api_ms=1000)
+        self.run_hook(p)
+        before = self.age_state()
+        del p["rate_limits"]["five_hour"]  # Claude Code verwirft Fenster nach Reset
+        self.run_hook(p)
+        st = self.read_state()
+        self.assertEqual(st["updated_at"], before["updated_at"])
+        self.assertEqual(st["windows"]["seven_day"], before["windows"]["seven_day"])
+
+    def test_session_list_is_capped(self):
+        spec = importlib.util.spec_from_file_location("claude_usage_hook", HOOK)
+        hook = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(hook)
+        os.environ["CLAUDE_USAGE_STATE"] = str(self.state)
+        try:
+            now = int(time.time())
+            for i in range(hook.MAX_SESSIONS + 8):
+                hook.update_state(self.payload(session=f"s{i}", api_ms=i), now + i)
+        finally:
+            del os.environ["CLAUDE_USAGE_STATE"]
+        sessions = self.read_state()["sessions"]
+        self.assertEqual(len(sessions), hook.MAX_SESSIONS)
+        self.assertIn(f"s{hook.MAX_SESSIONS + 7}", sessions)
+        self.assertNotIn("s0", sessions)
 
     def test_show(self):
         self.assertEqual(self.run_hook(b"", "--show").returncode, 1)

@@ -58,6 +58,9 @@ PlasmoidItem {
         onTriggered: root.reload()
     }
 
+    // Beim Öffnen des Popups nicht auf den nächsten Timer-Tick warten
+    onExpandedChanged: if (expanded) reload()
+
     function reload() {
         now = Date.now() / 1000
         reader.connectSource(readCommand)

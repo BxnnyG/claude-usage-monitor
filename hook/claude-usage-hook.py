@@ -16,6 +16,7 @@ lesen, keine Abhaengigkeiten ausser der Python-Standardbibliothek.
 from __future__ import annotations
 
 import argparse
+import fcntl
 import json
 import os
 import subprocess
@@ -31,9 +32,19 @@ STATE_VERSION = 1
 # (anthropics/claude-code#52326).
 MAX_PERCENT = 1000.0
 
-# Hat sich inhaltlich nichts geaendert, nur alle N Sekunden neu schreiben
-# (um updated_at aufzufrischen). Claude Code rendert teils mehrmals pro Sekunde.
+# Nur fuer Payloads ohne session_id: hat sich inhaltlich nichts geaendert, nur
+# alle N Sekunden neu schreiben (um updated_at aufzufrischen).
 MIN_REWRITE_SECONDS = 30
+
+# Wie weit resets_at desselben Fensters zwischen zwei Meldungen abweichen darf.
+# Ein neues 5h-/7d-Fenster beginnt erst nach dem Reset des alten, sein resets_at
+# liegt also Stunden bis Tage spaeter.
+SAME_WINDOW_TOLERANCE = 3600
+
+# Pro Claude-Code-Session merken wir uns den zuletzt gemeldeten Stand, um reine
+# Wiederholungen ohne neue API-Antwort zu erkennen (siehe update_state).
+MAX_SESSIONS = 32
+SESSION_TTL = 8 * 86400
 
 WARN_PERCENT = 70.0
 CRIT_PERCENT = 90.0
@@ -120,26 +131,122 @@ def _comparable(windows: dict) -> dict:
     }
 
 
+def _num(value) -> float | None:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    return float(value)
+
+
+def _dict(value) -> dict:
+    return value if isinstance(value, dict) else {}
+
+
+def is_newer(old, new: dict, now: int, allow_decrease: bool = False) -> bool:
+    """Ist die Meldung `new` mindestens so aktuell wie der gespeicherte Stand `old`?
+
+    Innerhalb eines Fensters steigt die Nutzung nur. Ein kleinerer Wert fuer
+    dasselbe Fenster stammt deshalb fast immer aus einer anderen Session, die
+    seit ihrer letzten API-Antwort untaetig ist und nur neu rendert.
+    """
+    if not isinstance(old, dict):
+        return True
+    old_reset = _num(old.get("resets_at"))
+    new_reset = new.get("resets_at")
+    if old_reset and old_reset <= now:
+        return True  # gespeichertes Fenster ist schon abgelaufen
+    if old_reset and new_reset:
+        if new_reset > old_reset + SAME_WINDOW_TOLERANCE:
+            return True  # neues Fenster
+        if new_reset < old_reset - SAME_WINDOW_TOLERANCE:
+            return False  # aelteres Fenster
+    if allow_decrease:
+        return True
+    return new["used_percentage"] >= (_num(old.get("used_percentage")) or 0.0)
+
+
+def _prune_sessions(sessions: dict, now: int) -> dict:
+    alive = [
+        (sid, rec)
+        for sid, rec in sessions.items()
+        if isinstance(rec, dict) and now - (_num(rec.get("seen")) or 0) < SESSION_TTL
+    ]
+    alive.sort(key=lambda item: _num(item[1].get("seen")) or 0, reverse=True)
+    return dict(alive[:MAX_SESSIONS])
+
+
 def update_state(payload: dict, now: int) -> dict:
     """Merged neue Fenster in die State-Datei und gibt den aktuellen Stand zurueck."""
-    fresh = parse_windows(payload)
     path = state_path()
-    old = load_state(path)
-    old_windows = old.get("windows") if isinstance(old.get("windows"), dict) else {}
+    os.makedirs(os.path.dirname(path), mode=0o700, exist_ok=True)
+    # Mehrere Claude-Code-Sessions koennen gleichzeitig schreiben.
+    with open(path + ".lock", "a") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        return _update_state_locked(path, payload, now)
 
-    if not fresh:
+
+def _update_state_locked(path: str, payload: dict, now: int) -> dict:
+    reported = parse_windows(payload)
+    old = load_state(path)
+    old_windows = _dict(old.get("windows"))
+
+    if not reported:
         # Nichts Neues - z. B. vor der ersten API-Antwort einer Session, oder
         # Claude Code hat ein Fenster nach dessen Reset weggelassen.
         # Alten Stand behalten; das Widget erkennt Resets selbst.
         return old_windows
 
-    merged = {k: v for k, v in old_windows.items() if isinstance(v, dict)}
-    for key, win in fresh.items():
-        merged[key] = dict(win, seen_at=now)
+    # Claude Code ruft die statusLine nicht nur nach API-Antworten auf, sondern
+    # auch bei Moduswechsel, Ablauf des Prompt-Caches, refreshInterval usw. -
+    # dann mit den rate_limits der letzten Antwort DIESER Session. Laufen mehrere
+    # Sessions, wuerde eine laenger untaetige Session so den frischeren Stand
+    # einer anderen mit alten Werten ueberschreiben. Deshalb merken wir uns pro
+    # Session, was sie zuletzt gemeldet hat, und werten reine Wiederholungen
+    # nicht als neue Daten.
+    old_sessions = _dict(old.get("sessions"))
+    sessions = dict(old_sessions)
+    sid = payload.get("session_id")
+    sid = sid if isinstance(sid, str) and sid else None
+    prev = sessions.get(sid) if sid else None
+    prev = prev if isinstance(prev, dict) else None
+    prev_windows = _dict(prev.get("windows")) if prev else {}
+    cost = _dict(payload.get("cost"))
+    api_ms = _num(cost.get("total_api_duration_ms"))
+    record = {
+        "api_ms": api_ms,
+        "windows": {k: [w["used_percentage"], w["resets_at"]] for k, w in reported.items()},
+    }
+    if prev is not None and prev.get("api_ms") == api_ms and prev_windows == record["windows"]:
+        return old_windows  # exakt dieselbe Meldung wie zuletzt: nichts zu tun
+    api_changed = prev is not None and api_ms is not None and api_ms != _num(prev.get("api_ms"))
 
-    last_update = old.get("updated_at")
-    last_update = last_update if isinstance(last_update, (int, float)) else 0
-    if _comparable(merged) == _comparable(old_windows) and now - last_update < MIN_REWRITE_SECONDS:
+    merged = {k: v for k, v in old_windows.items() if isinstance(v, dict)}
+    accepted = False
+    for key, win in reported.items():
+        own_changed = prev is not None and prev_windows.get(key) != [
+            win["used_percentage"],
+            win["resets_at"],
+        ]
+        if prev is not None and not (api_changed or own_changed):
+            continue  # Wiederholung ohne neue API-Antwort
+        # Hat die Session selbst einen anderen Wert als zuletzt, kam er aus einer
+        # neuen API-Antwort - dann auch einen kleineren Wert glauben.
+        if is_newer(merged.get(key), win, now, allow_decrease=own_changed):
+            merged[key] = dict(win, seen_at=now)
+            accepted = True
+
+    if sid:
+        sessions[sid] = dict(record, seen=now)
+        sessions = _prune_sessions(sessions, now)
+
+    last_update = _num(old.get("updated_at")) or 0
+    if not accepted and sessions == old_sessions:
+        return merged
+    if (
+        accepted
+        and sid is None
+        and _comparable(merged) == _comparable(old_windows)
+        and now - last_update < MIN_REWRITE_SECONDS
+    ):
         return merged
 
     version = payload.get("version")
@@ -148,9 +255,13 @@ def update_state(payload: dict, now: int) -> dict:
         {
             "version": STATE_VERSION,
             "source": "claude-code-statusline",
-            "updated_at": now,
-            "claude_code_version": version if isinstance(version, str) else None,
+            # Zeitpunkt der letzten neuen Daten, nicht des letzten Schreibens.
+            "updated_at": now if accepted else (int(last_update) or None),
+            "claude_code_version": version
+            if accepted and isinstance(version, str)
+            else old.get("claude_code_version"),
             "windows": merged,
+            "sessions": sessions,
         },
     )
     return merged
