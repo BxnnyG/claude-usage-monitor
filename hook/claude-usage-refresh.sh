@@ -12,6 +12,8 @@
 #
 # Nutzung: claude-usage-refresh [--force]
 #   --force   auch laufen, wenn die Daten noch frisch sind
+#   --debug   wie --force, Bildschirmausgabe von Claude Code nach
+#             ~/.cache/claude-usage/refresh-debug.log mitschneiden
 set -uo pipefail
 
 STATE="${CLAUDE_USAGE_STATE:-$HOME/.cache/claude-usage/state.json}"
@@ -20,10 +22,12 @@ MAX_WAIT="${CLAUDE_USAGE_REFRESH_TIMEOUT:-45}"        # Sekunden
 MIN_AGE="${CLAUDE_USAGE_REFRESH_MIN_AGE:-300}"        # juengere Daten -> nichts tun
 
 FORCE=0
+DEBUG=0
 case "${1:-}" in
     --force) FORCE=1 ;;
+    --debug) FORCE=1; DEBUG=1 ;;
     "") ;;
-    -h|--help) sed -n '2,15p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    -h|--help) sed -n '2,17p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) echo "Unbekannte Option: $1" >&2; exit 2 ;;
 esac
 
@@ -80,7 +84,9 @@ cd "$WORKDIR" || { log "Verzeichnis $WORKDIR fehlt"; exit 1; }
 [[ -z "${TERM:-}" || "${TERM:-}" == dumb ]] && export TERM=xterm-256color
 export DISABLE_AUTOUPDATER=1  # kein Update-Download bei jedem Hintergrundstart
 
-setsid script -qfec "stty cols 120 rows 40 2>/dev/null; exec $(printf '%q' "$CLAUDE_BIN")" /dev/null \
+TYPESCRIPT=/dev/null
+[[ $DEBUG -eq 1 ]] && TYPESCRIPT="$STATE_DIR/refresh-debug.log"
+setsid script -qfec "stty cols 120 rows 40 2>/dev/null; exec $(printf '%q' "$CLAUDE_BIN")" "$TYPESCRIPT" \
     <"$tmp/in" >/dev/null 2>&1 &
 pid=$!
 exec 3>"$tmp/in"
@@ -94,6 +100,7 @@ for (( i = 0; i < MAX_WAIT; i++ )); do
     kill -0 "$pid" 2>/dev/null || break
 done
 
+[[ $DEBUG -eq 1 ]] && log "Mitschnitt: $TYPESCRIPT"
 log "keine neuen Daten nach ${MAX_WAIT}s. Moegliche Ursachen: $WORKDIR in Claude Code" \
     "nicht als vertrauenswuerdig bestaetigt (einmal 'claude' dort starten), nicht eingeloggt," \
     "oder diese Claude-Code-Version holt die Limits beim Start nicht."
