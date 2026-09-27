@@ -18,7 +18,9 @@
 set -uo pipefail
 
 STATE="${CLAUDE_USAGE_STATE:-$HOME/.cache/claude-usage/state.json}"
-WORKDIR="${CLAUDE_USAGE_REFRESH_DIR:-$HOME}"          # muss in Claude Code "vertraut" sein
+# Eigenes, leeres Verzeichnis: Claude Code merkt sich "vertraut" fuer $HOME nicht
+# dauerhaft, fuer normale Ordner schon. Einmal manuell bestaetigen (siehe README).
+WORKDIR="${CLAUDE_USAGE_REFRESH_DIR:-${XDG_DATA_HOME:-$HOME/.local/share}/claude-usage/cwd}"
 MAX_WAIT="${CLAUDE_USAGE_REFRESH_TIMEOUT:-45}"        # Sekunden
 MIN_AGE="${CLAUDE_USAGE_REFRESH_MIN_AGE:-300}"        # juengere Daten -> nichts tun
 STATUS_AFTER="${CLAUDE_USAGE_REFRESH_STATUS_AFTER:-8}" # Sekunden bis /status getippt wird
@@ -75,6 +77,7 @@ cleanup() {
         kill -KILL -- "-$pid" 2>/dev/null
     fi
     exec 3>&- 2>/dev/null
+    [[ $DEBUG -eq 1 && -f "$tmp/screen" ]] && cp -- "$tmp/screen" "$STATE_DIR/refresh-debug.log"
     rm -rf -- "$tmp"
 }
 trap cleanup EXIT
@@ -82,12 +85,12 @@ trap cleanup EXIT
 # stdin fuer `script`: eine FIFO, deren Schreibseite wir offen halten. So sieht
 # Claude Code kein EOF, und wir koennen gezielt `/status` eintippen.
 mkfifo "$tmp/in"
+mkdir -p "$WORKDIR"
 cd "$WORKDIR" || { log "Verzeichnis $WORKDIR fehlt"; exit 1; }
 [[ -z "${TERM:-}" || "${TERM:-}" == dumb ]] && export TERM=xterm-256color
 export DISABLE_AUTOUPDATER=1  # kein Update-Download bei jedem Hintergrundstart
 
-TYPESCRIPT=/dev/null
-[[ $DEBUG -eq 1 ]] && TYPESCRIPT="$STATE_DIR/refresh-debug.log"
+TYPESCRIPT="$tmp/screen"  # Bildschirminhalt, um Dialoge zu erkennen
 setsid script -qfec "stty cols 120 rows 40 2>/dev/null; exec $(printf '%q' "$CLAUDE_BIN")" "$TYPESCRIPT" \
     <"$tmp/in" >/dev/null 2>&1 &
 pid=$!
@@ -101,6 +104,14 @@ for (( i = 0; i < MAX_WAIT; i++ )); do
     fi
     kill -0 "$pid" 2>/dev/null || break
     if (( i + 1 == STATUS_AFTER )); then
+        # Nie blind in einen Dialog tippen. Text ohne Escape-Sequenzen und
+        # Leerraum, weil die TUI Woerter per Cursorbewegung trennt.
+        screen="$(sed 's/\x1b\[[0-9;?]*[a-zA-Z]//g' "$TYPESCRIPT" | tr -d '[:space:]')"
+        if [[ "$screen" == *trustthisfolder* ]]; then
+            log "Claude Code fragt, ob es $WORKDIR vertrauen soll. Einmal bestaetigen:"
+            log "  cd $(printf '%q' "$WORKDIR") && claude   -> 'Yes, I trust this folder', dann beenden"
+            exit 3
+        fi
         # Zeichen und Enter getrennt, sonst haelt die TUI es fuer eingefuegten Text
         printf '/status' >&3
         sleep 0.5
@@ -108,7 +119,7 @@ for (( i = 0; i < MAX_WAIT; i++ )); do
     fi
 done
 
-[[ $DEBUG -eq 1 ]] && log "Mitschnitt: $TYPESCRIPT"
+[[ $DEBUG -eq 1 ]] && log "Mitschnitt: $STATE_DIR/refresh-debug.log"
 log "keine neuen Daten nach ${MAX_WAIT}s. Moegliche Ursachen: $WORKDIR in Claude Code" \
     "nicht als vertrauenswuerdig bestaetigt (einmal 'claude' dort starten), nicht eingeloggt," \
     "oder diese Claude-Code-Version holt die Limits beim Start nicht."

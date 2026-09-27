@@ -178,6 +178,9 @@ Fertig. Nächste Schritte:
   3. Kontrolle im Terminal:  $HOOK_DST --show
   4. Frische Werte holen:    claude-usage-refresh --force   (oder Rechtsklick aufs Widget)
      Automatisch:            ./install.sh --auto-refresh[=MIN]
+     Dafür EINMAL den Arbeitsordner in Claude Code als vertrauenswürdig bestätigen:
+       mkdir -p ~/.local/share/claude-usage/cwd && cd ~/.local/share/claude-usage/cwd && claude
+       -> "Yes, I trust this folder", dann mit Ctrl-C beenden
 EOF
 if [[ $UPGRADED -eq 1 ]]; then
     echo

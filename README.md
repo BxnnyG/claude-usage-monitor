@@ -50,8 +50,12 @@ holen“ (oder im Terminal `claude-usage-refresh --force`). Das startet das offi
 unsichtbar in einem Pseudo-Terminal und tippt nach 8 s `/status` ein – ein lokaler Befehl,
 **es wird keine Nachricht ans Modell geschickt**. `/status` lädt die Nutzungsdaten (getestet mit
 v2.1.283), der Hook schreibt sie, danach wird `claude` wieder beendet (max. 45 s).
-Voraussetzungen: `claude` ist eingeloggt und `~` ist in Claude Code als vertrauenswürdig
-bestätigt (sonst `CLAUDE_USAGE_REFRESH_DIR` setzen). Hängt an der Oberfläche von Claude Code
+Voraussetzungen: `claude` ist eingeloggt, und der leere Arbeitsordner
+`~/.local/share/claude-usage/cwd` ist **einmal** in Claude Code als vertrauenswürdig bestätigt
+(`mkdir -p ~/.local/share/claude-usage/cwd && cd ~/.local/share/claude-usage/cwd && claude`,
+„Yes, I trust this folder“, beenden). `~` selbst taugt nicht: Dafür merkt sich Claude Code die
+Bestätigung nicht. Erscheint der Dialog trotzdem, tippt das Skript nichts ein und bricht mit
+Hinweis ab (Exit-Code 3). Hängt an der Oberfläche von Claude Code
 und kann mit Updates brechen; `claude-usage-refresh --debug` schneidet die Bildschirmausgabe
 nach `~/.cache/claude-usage/refresh-debug.log` mit. Ob der Aufruf Kontingent kostet, ist
 undokumentiert (vermutlich nicht, `/status` fragt nur ab).

@@ -60,6 +60,6 @@ fi
 
 echo "==> Hook und Cache entfernen"
 rm -f "$HOOK_DST" "$HOME/.local/bin/claude-usage-refresh"
-rm -rf "$CACHE_DIR"
+rm -rf "$CACHE_DIR" "${XDG_DATA_HOME:-$HOME/.local/share}/claude-usage"
 
 echo "Fertig."
