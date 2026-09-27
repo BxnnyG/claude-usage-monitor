@@ -9,6 +9,7 @@ KCM.SimpleKCM {
     property alias cfg_critPercent: critSpin.value
     property alias cfg_staleMinutes: staleSpin.value
     property alias cfg_showWeekly: weeklyCheck.checked
+    property alias cfg_showCountdown: countdownCheck.checked
 
     Kirigami.FormLayout {
         QQC2.SpinBox {
@@ -45,6 +46,10 @@ KCM.SimpleKCM {
             id: weeklyCheck
             Kirigami.FormData.label: i18n("Kontrollleiste:")
             text: i18n("7-Tage-Wert anzeigen")
+        }
+        QQC2.CheckBox {
+            id: countdownCheck
+            text: i18n("Countdown bis zum 5h-Reset anzeigen")
         }
     }
 }

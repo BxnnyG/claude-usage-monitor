@@ -4,9 +4,11 @@ Zeigt dein Claude-Nutzungslimit (5-Stunden-Session und 7-Tage-Fenster) als Widge
 in der KDE-Plasma-6-Kontrollleiste.
 
 ```
-Kontrollleiste:   5h 42%   7d 15%
-                  ▔▔▔▔▔    ▔▔
+Kontrollleiste:   5h 42% ↻ 1:23   7d 15%
+                  ▔▔▔▔▔           ▔▔
 ```
+
+`↻ 1:23` = das 5-Stunden-Fenster wird in 1 h 23 min zurückgesetzt.
 
 Klick öffnet ein Popup mit Balken, Reset-Countdown und Datenstand, Mittelklick liest
 neu ein, Rechtsklick bietet „Nutzung auf claude.ai öffnen“.
@@ -84,7 +86,18 @@ den Hook nur öfter mit denselben alten Werten auf.
 
 ## Installation
 
+Einzeiler (lädt das Repo in ein Temp-Verzeichnis und startet `install.sh`):
+
 ```bash
+curl -fsSL https://raw.githubusercontent.com/BxnnyG/claude-usage-monitor/HEAD/get.sh | bash
+```
+
+Optionen durchreichen: `… | bash -s -- --wrap-existing`. Feste Version statt aktuellem
+Stand: `… | CLAUDE_USAGE_REF=<tag oder commit> bash`. Wer Skripte nicht ungelesen aus dem Netz
+ausführen will (vernünftig), klont stattdessen:
+
+```bash
+git clone https://github.com/BxnnyG/claude-usage-monitor && cd claude-usage-monitor
 ./install.sh
 ```
 
@@ -117,7 +130,7 @@ printf '%s' "$input" | ~/.local/bin/claude-usage-hook --quiet
 ### Update
 
 ```bash
-git pull && ./install.sh
+git pull && ./install.sh          # oder den Einzeiler erneut ausführen
 systemctl --user restart plasma-plasmashell.service   # Plasma lädt Widget-Code nur neu nach Shell-Neustart
 ```
 
@@ -145,6 +158,7 @@ Rechtsklick aufs Widget → „Claude Usage einrichten…“:
 | Gelb ab / Rot ab | 70 % / 90 % | Farbschwellen (Theme-Farben neutral/negative) |
 | Abblenden nach | 30 min | Ab wann Werte ohne Update aus Claude Code als veraltet gelten |
 | 7-Tage-Wert anzeigen | an | In der Leiste; im Popup immer sichtbar |
+| Countdown bis zum 5h-Reset | an | `↻ h:mm` neben dem 5h-Wert; zählt alle 30 s weiter |
 
 ## Dateien
 
@@ -155,6 +169,7 @@ Rechtsklick aufs Widget → „Claude Usage einrichten…“:
 | `plasmoid/contents/ui/UsageChip.qml` | Ein Wert in der Leiste (Text + dünner Balken) |
 | `plasmoid/contents/ui/WindowRow.qml` | Eine Zeile im Popup |
 | `plasmoid/contents/ui/configGeneral.qml`, `contents/config/*` | Einstellungsdialog + Schema |
+| `get.sh` | Einzeiler-Installer: lädt das Repo-Archiv von GitHub, ruft `install.sh` auf |
 | `install.sh` / `uninstall.sh` | User-lokale (De-)Installation, settings.json mit Backup |
 | `tests/test_hook.py` | Unit-Tests für den Hook |
 
@@ -199,3 +214,7 @@ Erst das Widget aus der Leiste entfernen, dann:
 
 Entfernt Widget, Hook und Cache. Eine per `--wrap-existing` eingebundene eigene
 statusLine wird wiederhergestellt, sonst wird der `statusLine`-Eintrag gelöscht.
+
+## Lizenz
+
+MIT, siehe [LICENSE](LICENSE).

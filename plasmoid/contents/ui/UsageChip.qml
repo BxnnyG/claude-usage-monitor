@@ -9,6 +9,7 @@ ColumnLayout {
 
     property string label
     property var info: null        // Objekt aus main.qml windowInfo(), oder null
+    property string countdown: ""  // z. B. "1:23"; leer = ausblenden
     property int warnPercent: 70
     property int critPercent: 90
 
@@ -43,6 +44,12 @@ ColumnLayout {
                 font.bold: true
                 text: "100%"
             }
+        }
+        PlasmaComponents.Label {
+            visible: chip.hasValue && chip.countdown.length > 0
+            text: "↻ " + chip.countdown
+            font: Kirigami.Theme.smallFont
+            opacity: 0.7
         }
     }
 

@@ -16,6 +16,7 @@ PlasmoidItem {
     readonly property int critPercent: Plasmoid.configuration.critPercent
     readonly property int staleMinutes: Plasmoid.configuration.staleMinutes
     readonly property bool showWeekly: Plasmoid.configuration.showWeekly
+    readonly property bool showCountdown: Plasmoid.configuration.showCountdown
 
     readonly property string usageUrl: "https://claude.ai/settings/usage"
     // Fester Pfad, identisch zum Hook. Konstanter String -> keine Shell-Injection möglich.
@@ -56,6 +57,14 @@ PlasmoidItem {
         repeat: true
         triggeredOnStart: true
         onTriggered: root.reload()
+    }
+
+    // Countdown/„vor X min“ weiterzählen, auch wenn die Datei selten gelesen wird
+    Timer {
+        interval: 30 * 1000
+        running: true
+        repeat: true
+        onTriggered: root.now = Date.now() / 1000
     }
 
     // Beim Öffnen des Popups nicht auf den nächsten Timer-Tick warten
@@ -125,6 +134,21 @@ PlasmoidItem {
         if (h > 0)
             return i18n("%1 h %2 min", h, m)
         return i18n("%1 min", m)
+    }
+
+    // Kurzform für die Leiste: "2T 4h", "1:23" (h:mm), "0:07"
+    function fmtCountdown(info) {
+        if (!info || info.expired || info.resetsAt <= 0)
+            return ""
+        const sec = Math.max(0, info.resetsAt - now)
+        const d = Math.floor(sec / 86400)
+        const h = Math.floor(sec % 86400 / 3600)
+        const m = Math.ceil(sec % 3600 / 60)
+        if (d > 0)
+            return i18n("%1T %2h", d, h)
+        if (m === 60)
+            return (h + 1) + ":00"
+        return h + ":" + (m < 10 ? "0" : "") + m
     }
 
     function fmtClock(epoch) {
@@ -215,6 +239,7 @@ PlasmoidItem {
             UsageChip {
                 label: "5h"
                 info: root.fiveHour
+                countdown: root.showCountdown ? root.fmtCountdown(root.fiveHour) : ""
                 warnPercent: root.warnPercent
                 critPercent: root.critPercent
             }

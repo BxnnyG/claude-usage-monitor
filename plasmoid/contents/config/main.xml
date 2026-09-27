@@ -18,6 +18,10 @@
             <label>Ab wie vielen Minuten ohne Update aus Claude Code die Werte als veraltet gelten</label>
             <default>30</default>
         </entry>
+        <entry name="showCountdown" type="Bool">
+            <label>Countdown bis zum Reset des 5-Stunden-Fensters in der Kontrollleiste</label>
+            <default>true</default>
+        </entry>
         <entry name="showWeekly" type="Bool">
             <default>true</default>
         </entry>
