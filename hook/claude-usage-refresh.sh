@@ -3,9 +3,10 @@
 #
 # Startet das offizielle Claude Code kurz in einem Pseudo-Terminal. Kommen nach
 # STATUS_AFTER Sekunden noch keine Limits, wird `/status` eingetippt (lokaler
-# Befehl, keine Nachricht ans Modell) - das laedt die Nutzungsdaten, Claude Code
-# ruft die statusLine auf, und unser Hook schreibt state.json. Danach (oder nach
-# Timeout) wird Claude Code wieder beendet.
+# Befehl, keine Nachricht ans Modell) und der Dialog nach 4 s mit Esc
+# geschlossen. Dabei ruft Claude Code die statusLine mit frischen Limits auf, und
+# unser Hook schreibt state.json. Danach (oder nach Timeout) wird Claude Code
+# wieder beendet.
 #
 # Kein fremdes Token, kein Scraping - nur das echte `claude`. Aber: ob ein
 # Start ohne Nachricht Kontingent kostet, ist nicht dokumentiert. Deshalb
@@ -116,6 +117,11 @@ for (( i = 0; i < MAX_WAIT; i++ )); do
         printf '/status' >&3
         sleep 0.5
         printf '\r' >&3
+    fi
+    # Die statusLine laeuft erst, wenn der Dialog wieder geschlossen wird
+    # ("Settings dialog dismissed") - also nach ein paar Sekunden Esc druecken.
+    if (( i + 1 == STATUS_AFTER + 4 )); then
+        printf '\033' >&3
     fi
 done
 

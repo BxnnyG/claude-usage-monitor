@@ -47,7 +47,8 @@ Zwei Stufen, die man nicht verwechseln sollte:
 
 **Frische Werte auf Knopfdruck:** Rechtsklick aufs Widget → „Frische Werte von Claude Code
 holen“ (oder im Terminal `claude-usage-refresh --force`). Das startet das offizielle `claude`
-unsichtbar in einem Pseudo-Terminal und tippt nach 8 s `/status` ein – ein lokaler Befehl,
+unsichtbar in einem Pseudo-Terminal, tippt nach 8 s `/status` ein und schließt den Dialog nach 4 s
+mit Esc – lokale Bedienung,
 **es wird keine Nachricht ans Modell geschickt**. `/status` lädt die Nutzungsdaten (getestet mit
 v2.1.283), der Hook schreibt sie, danach wird `claude` wieder beendet (max. 45 s).
 Voraussetzungen: `claude` ist eingeloggt, und der leere Arbeitsordner
