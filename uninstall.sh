@@ -48,6 +48,16 @@ fi
 echo "==> Plasmoid entfernen"
 kpackagetool6 --type Plasma/Applet --remove "$PLASMOID_ID" 2>/dev/null || echo "   war nicht installiert"
 
+echo "==> Auto-Refresh-Timer entfernen"
+UNIT_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user"
+if [[ -f "$UNIT_DIR/claude-usage-refresh.timer" ]]; then
+    systemctl --user disable --now claude-usage-refresh.timer 2>/dev/null || true
+    rm -f "$UNIT_DIR/claude-usage-refresh.service" "$UNIT_DIR/claude-usage-refresh.timer"
+    systemctl --user daemon-reload 2>/dev/null || true
+else
+    echo "   war nicht eingerichtet"
+fi
+
 echo "==> Hook und Cache entfernen"
 rm -f "$HOOK_DST" "$HOME/.local/bin/claude-usage-refresh"
 rm -rf "$CACHE_DIR"

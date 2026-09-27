@@ -54,12 +54,16 @@ schreibt sie, danach wird `claude` wieder beendet. Voraussetzungen: `claude` ist
 Undokumentiert ist, ob ein solcher Start Kontingent kostet – vermutlich minimal, aber nicht
 belegt. Das Verhalten hängt am Startablauf von Claude Code und kann sich mit Updates ändern.
 
-**Warum kein systemd-Timer oder -Service?** Ein Timer braucht etwas, das er abfragen kann.
-Claude Code bietet keinen dokumentierten Weg, den Nutzungsstand ohne echte Modellanfrage
-abzurufen: kein Subcommand, kein `-p`-fähiges `/usage` (Stand 09/2026). Die Wege, die es gibt,
-stehen in der Tabelle unten (OAuth-Token gegen `/api/oauth/usage`, Cookie-Scraping), und genau
-die vermeidet dieses Projekt bewusst. Auch `statusLine.refreshInterval` bringt nichts: Es ruft
-den Hook nur öfter mit denselben alten Werten auf.
+**Automatisch (opt-in):** `./install.sh --auto-refresh` (bzw. `… | bash -s -- --auto-refresh=10`)
+legt einen systemd-User-Timer an, der `claude-usage-refresh` alle 15 min (bzw. MIN Minuten)
+ausführt. Sind die Daten jünger als 5 min – etwa weil du gerade ohnehin mit Claude Code
+arbeitest –, passiert nichts. Status: `systemctl --user list-timers claude-usage-refresh.timer`,
+Log: `journalctl --user -u claude-usage-refresh`. Abschalten: `./install.sh --no-auto-refresh`.
+Bei 15 min sind das bis zu ~100 Claude-Code-Starts am Tag; ob die Kontingent kosten, vorher
+selbst prüfen (mehrmals `claude-usage-refresh --force`, dann `claude-usage-hook --show`).
+
+Der Weg über ein ausgelesenes OAuth-Token gegen `/api/oauth/usage` oder Cookie-Scraping (siehe
+Tabelle unten) wird bewusst nicht genutzt; der Timer startet nur das offizielle `claude`.
 
 - **Kein Netzwerk.** Weder Hook noch Widget stellen eine einzige Verbindung her.
 - **Keine Credentials.** `~/.claude/.credentials.json`, OAuth-Tokens oder Browser-Cookies
@@ -181,6 +185,7 @@ Rechtsklick aufs Widget → „Claude Usage einrichten…“:
 | `plasmoid/contents/ui/UsageChip.qml` | Ein Wert in der Leiste (Text + dünner Balken) |
 | `plasmoid/contents/ui/WindowRow.qml` | Eine Zeile im Popup |
 | `plasmoid/contents/ui/configGeneral.qml`, `contents/config/*` | Einstellungsdialog + Schema |
+| `hook/claude-usage-refresh.sh` | Startet `claude` kurz ohne Nachricht, damit es frische Limits holt; vom Widget-Menü und optionalen Timer genutzt |
 | `get.sh` | Einzeiler-Installer: lädt das Repo-Archiv von GitHub, ruft `install.sh` auf |
 | `install.sh` / `uninstall.sh` | User-lokale (De-)Installation, settings.json mit Backup |
 | `tests/test_hook.py` | Unit-Tests für den Hook |

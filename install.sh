@@ -9,16 +9,26 @@ HOOK_DST="$HOME/.local/bin/claude-usage-hook"
 CLAUDE_DIR="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
 SETTINGS="$CLAUDE_DIR/settings.json"
 
+UNIT_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user"
+UNIT_NAME="claude-usage-refresh"
+
 WRAP_EXISTING=0
 SKIP_SETTINGS=0
+AUTO_REFRESH=""   # leer = unverändert lassen, 0 = abschalten, sonst Minuten
 
 usage() {
     cat <<EOF
-Nutzung: ./install.sh [--wrap-existing] [--no-settings]
+Nutzung: ./install.sh [--wrap-existing] [--no-settings] [--auto-refresh[=MIN]] [--no-auto-refresh]
 
   --wrap-existing  Hast du schon eine eigene statusLine in $SETTINGS,
                    wird sie per --chain eingebunden statt übersprungen.
   --no-settings    $SETTINGS nicht anfassen (statusLine selbst eintragen).
+  --auto-refresh[=MIN]
+                   systemd-User-Timer: alle MIN Minuten (Standard 15, min. 5)
+                   Claude Code kurz starten, damit es frische Limits holt.
+                   Ob das Kontingent kostet, ist undokumentiert - siehe README.
+  --no-auto-refresh
+                   Diesen Timer wieder entfernen.
 EOF
 }
 
@@ -26,6 +36,12 @@ for arg in "$@"; do
     case "$arg" in
         --wrap-existing) WRAP_EXISTING=1 ;;
         --no-settings) SKIP_SETTINGS=1 ;;
+        --auto-refresh) AUTO_REFRESH=15 ;;
+        --auto-refresh=*)
+            AUTO_REFRESH="${arg#*=}"
+            [[ "$AUTO_REFRESH" =~ ^[0-9]+$ && "$AUTO_REFRESH" -ge 5 ]] \
+                || { echo "--auto-refresh braucht Minuten >= 5" >&2; exit 2; } ;;
+        --no-auto-refresh) AUTO_REFRESH=0 ;;
         -h|--help) usage; exit 0 ;;
         *) echo "Unbekannte Option: $arg" >&2; usage >&2; exit 2 ;;
     esac
@@ -40,6 +56,42 @@ need kpackagetool6 kpackage
 echo "==> Hook installieren: $HOOK_DST"
 install -Dm755 "$HOOK_SRC" "$HOOK_DST"
 install -Dm755 "$REPO_DIR/hook/claude-usage-refresh.sh" "$HOME/.local/bin/claude-usage-refresh"
+
+if [[ "$AUTO_REFRESH" == 0 ]]; then
+    echo "==> Auto-Refresh abschalten"
+    systemctl --user disable --now "$UNIT_NAME.timer" 2>/dev/null || true
+    rm -f "$UNIT_DIR/$UNIT_NAME.service" "$UNIT_DIR/$UNIT_NAME.timer"
+    systemctl --user daemon-reload 2>/dev/null || true
+elif [[ -n "$AUTO_REFRESH" ]]; then
+    need systemctl systemd
+    need script util-linux
+    echo "==> Auto-Refresh alle $AUTO_REFRESH min ($UNIT_DIR/$UNIT_NAME.timer)"
+    mkdir -p "$UNIT_DIR"
+    cat >"$UNIT_DIR/$UNIT_NAME.service" <<UNIT
+[Unit]
+Description=Claude-Nutzungslimit über Claude Code auffrischen (claude-usage-plasmoid)
+
+[Service]
+Type=oneshot
+ExecStart=%h/.local/bin/claude-usage-refresh
+Environment=PATH=%h/.local/bin:/usr/local/bin:/usr/bin:/bin
+Nice=10
+UNIT
+    cat >"$UNIT_DIR/$UNIT_NAME.timer" <<UNIT
+[Unit]
+Description=Claude-Nutzungslimit alle $AUTO_REFRESH min auffrischen
+
+[Timer]
+OnStartupSec=2min
+OnUnitInactiveSec=${AUTO_REFRESH}min
+RandomizedDelaySec=30s
+
+[Install]
+WantedBy=timers.target
+UNIT
+    systemctl --user daemon-reload
+    systemctl --user enable --now "$UNIT_NAME.timer"
+fi
 
 echo "==> Plasmoid installieren/aktualisieren ($PLASMOID_ID)"
 if [[ -d "$HOME/.local/share/plasma/plasmoids/$PLASMOID_ID" ]]; then
@@ -124,6 +176,8 @@ Fertig. Nächste Schritte:
   1. Rechtsklick auf die Kontrollleiste → "Widgets hinzufügen…" → "Claude Usage" reinziehen.
   2. Claude Code starten und eine Nachricht schicken (Pro/Max-Abo nötig).
   3. Kontrolle im Terminal:  $HOOK_DST --show
+  4. Frische Werte holen:    claude-usage-refresh --force   (oder Rechtsklick aufs Widget)
+     Automatisch:            ./install.sh --auto-refresh[=MIN]
 EOF
 if [[ $UPGRADED -eq 1 ]]; then
     echo
