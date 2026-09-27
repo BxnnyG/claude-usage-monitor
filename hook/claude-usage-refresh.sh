@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
 # claude-usage-refresh - holt frische Limits, ohne eine Nachricht zu schicken.
 #
-# Startet das offizielle Claude Code kurz in einem Pseudo-Terminal. Claude Code
-# fragt beim Start die Limits beim Server ab, ruft dann die statusLine auf, und
-# unser Hook schreibt state.json. Sobald das passiert ist (oder nach Timeout),
-# wird Claude Code wieder beendet.
+# Startet das offizielle Claude Code kurz in einem Pseudo-Terminal. Kommen nach
+# STATUS_AFTER Sekunden noch keine Limits, wird `/status` eingetippt (lokaler
+# Befehl, keine Nachricht ans Modell) - das laedt die Nutzungsdaten, Claude Code
+# ruft die statusLine auf, und unser Hook schreibt state.json. Danach (oder nach
+# Timeout) wird Claude Code wieder beendet.
 #
 # Kein fremdes Token, kein Scraping - nur das echte `claude`. Aber: ob ein
 # Start ohne Nachricht Kontingent kostet, ist nicht dokumentiert. Deshalb
@@ -20,6 +21,7 @@ STATE="${CLAUDE_USAGE_STATE:-$HOME/.cache/claude-usage/state.json}"
 WORKDIR="${CLAUDE_USAGE_REFRESH_DIR:-$HOME}"          # muss in Claude Code "vertraut" sein
 MAX_WAIT="${CLAUDE_USAGE_REFRESH_TIMEOUT:-45}"        # Sekunden
 MIN_AGE="${CLAUDE_USAGE_REFRESH_MIN_AGE:-300}"        # juengere Daten -> nichts tun
+STATUS_AFTER="${CLAUDE_USAGE_REFRESH_STATUS_AFTER:-8}" # Sekunden bis /status getippt wird
 
 FORCE=0
 DEBUG=0
@@ -77,8 +79,8 @@ cleanup() {
 }
 trap cleanup EXIT
 
-# stdin fuer `script`: eine FIFO, deren Schreibseite wir offen halten, ohne je
-# etwas zu schreiben. So sieht Claude Code weder Eingaben noch EOF.
+# stdin fuer `script`: eine FIFO, deren Schreibseite wir offen halten. So sieht
+# Claude Code kein EOF, und wir koennen gezielt `/status` eintippen.
 mkfifo "$tmp/in"
 cd "$WORKDIR" || { log "Verzeichnis $WORKDIR fehlt"; exit 1; }
 [[ -z "${TERM:-}" || "${TERM:-}" == dumb ]] && export TERM=xterm-256color
@@ -98,6 +100,12 @@ for (( i = 0; i < MAX_WAIT; i++ )); do
         exit 0
     fi
     kill -0 "$pid" 2>/dev/null || break
+    if (( i + 1 == STATUS_AFTER )); then
+        # Zeichen und Enter getrennt, sonst haelt die TUI es fuer eingefuegten Text
+        printf '/status' >&3
+        sleep 0.5
+        printf '\r' >&3
+    fi
 done
 
 [[ $DEBUG -eq 1 ]] && log "Mitschnitt: $TYPESCRIPT"

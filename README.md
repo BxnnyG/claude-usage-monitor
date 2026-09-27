@@ -47,12 +47,14 @@ Zwei Stufen, die man nicht verwechseln sollte:
 
 **Frische Werte auf Knopfdruck:** Rechtsklick aufs Widget → „Frische Werte von Claude Code
 holen“ (oder im Terminal `claude-usage-refresh --force`). Das startet das offizielle `claude`
-für ein paar Sekunden unsichtbar in einem Pseudo-Terminal, **ohne eine Nachricht zu schicken**.
-Claude Code (getestet mit v2.1.283) holt die Limits schon beim Start vom Server, der Hook
-schreibt sie, danach wird `claude` wieder beendet. Voraussetzungen: `claude` ist eingeloggt und
-`~` ist in Claude Code als vertrauenswürdig bestätigt (sonst `CLAUDE_USAGE_REFRESH_DIR` setzen).
-Undokumentiert ist, ob ein solcher Start Kontingent kostet – vermutlich minimal, aber nicht
-belegt. Das Verhalten hängt am Startablauf von Claude Code und kann sich mit Updates ändern.
+unsichtbar in einem Pseudo-Terminal und tippt nach 8 s `/status` ein – ein lokaler Befehl,
+**es wird keine Nachricht ans Modell geschickt**. `/status` lädt die Nutzungsdaten (getestet mit
+v2.1.283), der Hook schreibt sie, danach wird `claude` wieder beendet (max. 45 s).
+Voraussetzungen: `claude` ist eingeloggt und `~` ist in Claude Code als vertrauenswürdig
+bestätigt (sonst `CLAUDE_USAGE_REFRESH_DIR` setzen). Hängt an der Oberfläche von Claude Code
+und kann mit Updates brechen; `claude-usage-refresh --debug` schneidet die Bildschirmausgabe
+nach `~/.cache/claude-usage/refresh-debug.log` mit. Ob der Aufruf Kontingent kostet, ist
+undokumentiert (vermutlich nicht, `/status` fragt nur ab).
 
 **Automatisch (opt-in):** `./install.sh --auto-refresh` (bzw. `… | bash -s -- --auto-refresh=10`)
 legt einen systemd-User-Timer an, der `claude-usage-refresh` alle 15 min (bzw. MIN Minuten)
