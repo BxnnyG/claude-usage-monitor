@@ -45,6 +45,15 @@ Zwei Stufen, die man nicht verwechseln sollte:
    zusätzlich beim Öffnen des Popups. Das ist nicht der Engpass: Ein `cat` alle 10 s kostet
    praktisch nichts, und neue Werte entstehen ohnehin nur in Stufe 1.
 
+**Frische Werte auf Knopfdruck:** Rechtsklick aufs Widget → „Frische Werte von Claude Code
+holen“ (oder im Terminal `claude-usage-refresh --force`). Das startet das offizielle `claude`
+für ein paar Sekunden unsichtbar in einem Pseudo-Terminal, **ohne eine Nachricht zu schicken**.
+Claude Code (getestet mit v2.1.283) holt die Limits schon beim Start vom Server, der Hook
+schreibt sie, danach wird `claude` wieder beendet. Voraussetzungen: `claude` ist eingeloggt und
+`~` ist in Claude Code als vertrauenswürdig bestätigt (sonst `CLAUDE_USAGE_REFRESH_DIR` setzen).
+Undokumentiert ist, ob ein solcher Start Kontingent kostet – vermutlich minimal, aber nicht
+belegt. Das Verhalten hängt am Startablauf von Claude Code und kann sich mit Updates ändern.
+
 **Warum kein systemd-Timer oder -Service?** Ein Timer braucht etwas, das er abfragen kann.
 Claude Code bietet keinen dokumentierten Weg, den Nutzungsstand ohne echte Modellanfrage
 abzurufen: kein Subcommand, kein `-p`-fähiges `/usage` (Stand 09/2026). Die Wege, die es gibt,

@@ -21,6 +21,8 @@ PlasmoidItem {
     readonly property string usageUrl: "https://claude.ai/settings/usage"
     // Fester Pfad, identisch zum Hook. Konstanter String -> keine Shell-Injection möglich.
     readonly property string readCommand: 'cat -- "$HOME/.cache/claude-usage/state.json"'
+    // Startet Claude Code kurz im Hintergrund (siehe hook/claude-usage-refresh.sh); kehrt sofort zurück.
+    readonly property string refreshCommand: 'setsid -f "$HOME/.local/bin/claude-usage-refresh" --force >/dev/null 2>&1'
 
     // ---------- Zustand ----------
     property var usage: null          // geparste state.json oder null
@@ -47,7 +49,8 @@ PlasmoidItem {
         connectedSources: []
         onNewData: (sourceName, data) => {
             disconnectSource(sourceName)
-            root.handleOutput(data["exit code"], data["stdout"])
+            if (sourceName === root.readCommand)
+                root.handleOutput(data["exit code"], data["stdout"])
         }
     }
 
@@ -69,6 +72,25 @@ PlasmoidItem {
 
     // Beim Öffnen des Popups nicht auf den nächsten Timer-Tick warten
     onExpandedChanged: if (expanded) reload()
+
+    // Claude Code braucht ein paar Sekunden; danach mehrmals neu lesen
+    function fetchFromClaude() {
+        reader.connectSource(refreshCommand)
+        fetchPoll.remaining = 6
+        fetchPoll.restart()
+    }
+
+    Timer {
+        id: fetchPoll
+        property int remaining: 0
+        interval: 5000
+        repeat: true
+        onTriggered: {
+            root.reload()
+            if (--remaining <= 0)
+                stop()
+        }
+    }
 
     function reload() {
         now = Date.now() / 1000
@@ -201,6 +223,11 @@ PlasmoidItem {
             text: i18n("Nutzung auf claude.ai öffnen")
             icon.name: "internet-web-browser"
             onTriggered: Qt.openUrlExternally(root.usageUrl)
+        },
+        PlasmaCore.Action {
+            text: i18n("Frische Werte von Claude Code holen")
+            icon.name: "cloud-download"
+            onTriggered: root.fetchFromClaude()
         },
         PlasmaCore.Action {
             text: i18n("Jetzt neu lesen")

@@ -39,6 +39,7 @@ need kpackagetool6 kpackage
 
 echo "==> Hook installieren: $HOOK_DST"
 install -Dm755 "$HOOK_SRC" "$HOOK_DST"
+install -Dm755 "$REPO_DIR/hook/claude-usage-refresh.sh" "$HOME/.local/bin/claude-usage-refresh"
 
 echo "==> Plasmoid installieren/aktualisieren ($PLASMOID_ID)"
 if [[ -d "$HOME/.local/share/plasma/plasmoids/$PLASMOID_ID" ]]; then

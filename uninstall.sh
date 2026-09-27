@@ -49,7 +49,7 @@ echo "==> Plasmoid entfernen"
 kpackagetool6 --type Plasma/Applet --remove "$PLASMOID_ID" 2>/dev/null || echo "   war nicht installiert"
 
 echo "==> Hook und Cache entfernen"
-rm -f "$HOOK_DST"
+rm -f "$HOOK_DST" "$HOME/.local/bin/claude-usage-refresh"
 rm -rf "$CACHE_DIR"
 
 echo "Fertig."
