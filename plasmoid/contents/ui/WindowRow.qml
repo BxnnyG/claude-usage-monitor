@@ -28,7 +28,8 @@ ColumnLayout {
             elide: Text.ElideRight
         }
         PlasmaComponents.Label {
-            text: row.hasValue ? Math.round(row.pct) + " %" : "–"
+            // Veralteter Wert = Untergrenze, die Nutzung kann seitdem nur gestiegen sein
+            text: !row.hasValue ? "–" : (row.info.stale ? "≥ " : "") + Math.round(row.pct) + " %"
             font.bold: true
             color: !row.hasValue ? Kirigami.Theme.disabledTextColor
                  : row.pct >= row.critPercent ? Kirigami.Theme.negativeTextColor

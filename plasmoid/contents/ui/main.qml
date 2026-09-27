@@ -174,7 +174,7 @@ PlasmoidItem {
             return label + ": –"
         if (info.expired)
             return i18n("%1: zurückgesetzt", label)
-        return i18n("%1: %2 % (Reset %3)", label, Math.round(info.pct), fmtClock(info.resetsAt))
+        return i18n("%1: %2%3 % (Reset %4)", label, info.stale ? "≥ " : "", Math.round(info.pct), fmtClock(info.resetsAt))
     }
 
     readonly property string freshnessText: {
@@ -308,7 +308,7 @@ PlasmoidItem {
                 wrapMode: Text.WordWrap
                 font: Kirigami.Theme.smallFont
                 color: Kirigami.Theme.neutralTextColor
-                text: i18n("Die Werte kommen nur aus Claude Code. Was du seitdem im Browser oder in der App verbraucht hast, fehlt hier bis zur nächsten Claude-Code-Antwort.")
+                text: i18n("Seitdem keine neuen Daten. Die Werte kommen nur aus Claude Code auf diesem Rechner – Nutzung im Browser, in der App oder in Claude Code im Web/in der Cloud fehlt, bis hier die nächste Claude-Code-Antwort kommt. Angezeigt ist deshalb nur ein Mindestwert (≥).")
             }
 
             PlasmaComponents.Label {

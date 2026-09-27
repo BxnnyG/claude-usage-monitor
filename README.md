@@ -65,6 +65,9 @@ den Hook nur öfter mit denselben alten Werten auf.
   claude.ai und Claude Code geteilt, aber was du im Browser verbrauchst, sieht das Widget
   erst, wenn Claude Code die nächste Antwort bekommt. Nach `staleMinutes` (Standard 30)
   ohne Update wird die Anzeige abgeblendet.
+- **Claude Code im Web / in der Cloud zählt nicht.** Sessions auf claude.ai/code oder in der
+  Desktop-App mit Cloud-Umgebung laufen nicht auf deinem Rechner, der lokale Hook sieht sie nie –
+  sie verbrauchen aber dasselbe Limit. Veraltete Werte zeigt das Widget deshalb als `≥ 94 %`.
 - **Nach einem Reset** zeigt das Widget `–` statt eines geratenen Werts, bis neue Daten kommen.
 - Wer den exakten Live-Stand braucht: Rechtsklick → „Nutzung auf claude.ai öffnen“
   (`https://claude.ai/settings/usage`).
